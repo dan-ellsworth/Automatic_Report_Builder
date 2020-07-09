@@ -1,0 +1,379 @@
+Option Explicit
+
+Sub import_results(Optional Starttime As Variant)
+    Dim fnum
+    Dim inputLine
+    Dim currentLine
+    Dim filename
+    Dim filepath
+    Dim i
+    Dim startdate
+    Dim fso As Object, wholefile As Object
+    Dim arr As Variant
+    
+    startdate = Date - 5
+    
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+    
+    
+    'Sheets("Import").Range("A:H").EntireRow.ClearContents
+    
+    filepath = "\\hewpedbprd\sgroot\Chemware_Export\Backup\"
+    
+    While startdate <= Date
+        
+        filename = Dir(filepath & "DailyDataExport" & Format(startdate, "YYYYMMDD") & "*")
+        
+        While Len(filename) > 1
+            If FileLen(filepath & filename) > 0 And Sheets("Import").Range("L:L").Find(filename, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                'On Error GoTo slowimport
+                Set fso = CreateObject("Scripting.FileSystemObject")
+                Set wholefile = fso.OpenTextFile(filepath & filename, 1)
+                arr = Split(wholefile.ReadAll, vbNewLine)
+                Application.StatusBar = "Fast Importing: " & filename & ".  " & Format((Timer - Starttime) / 86400, "(HH:MM:SS)")
+                Sheets("import").Range("A2").Resize(UBound(arr), 10).Insert Shift:=xlDown
+                Sheets("import").Range("A2").Resize(UBound(arr), 1).Value = Application.Transpose(arr)
+                Sheets("import").Range("A2").Resize(UBound(arr), 1).TextToColumns Destination:=Range("A2"), DataType:=xlDelimited, _
+                    TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, Tab:=True, _
+                    Semicolon:=False, Comma:=False, Space:=False, Other:=True, OtherChar _
+                    :="|", FieldInfo:=Array(Array(1, 1), Array(2, 1), Array(3, 1), Array(4, 1), Array(5, _
+                    1), Array(6, 1)), TrailingMinusNumbers:=True
+                For i = 0 To UBound(arr)
+                    If Sheets("Import").Range("D2").Offset(i, 0).Value <> "" Then
+                        Sheets("Import").Range("h2").Offset(i, 0).Value = Sheets("Import").Range("b2").Offset(i, 0).Value & Left(Sheets("Import").Range("D2").Offset(i, 0), InStr(Sheets("Import").Range("D2").Offset(i, 0), "-") - 1)
+                    End If
+                    If Not Sheets("Result codes").Range("A:A").Find(Sheets("Import").Range("d2").Offset(i, 0).Value, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                        Application.StatusBar = "Fast Importing: " & filename & ".  " & Format((Timer - Starttime) / 86400, "(HH:MM:SS)")
+                        Sheets("Import").Range("I2").Offset(i, 0).Value = Sheets("Result codes").Range("A:A").Find(Sheets("Import").Range("d2").Offset(i, 0).Value, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 1).Value
+                        Sheets("Import").Range("j2").Offset(i, 0).Value = Sheets("Result codes").Range("A:A").Find(Sheets("Import").Range("d2").Offset(i, 0).Value, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 5).Value
+                    End If
+                Next i
+                
+                
+                GoTo nextfile
+slowimport:
+                fnum = FreeFile
+                Open filepath & filename For Input Access Read As #fnum
+                
+                Do Until EOF(fnum)
+                    Application.StatusBar = "Slow Importing: " & filename & ".  " & Format((Timer - Starttime) / 86400, "(HH:MM:SS)")
+                    Line Input #fnum, inputLine
+                    currentLine = Split(Replace(inputLine, " ", ""), "|")
+                    
+                    Sheets("Import").Range("A2:j2").Insert Shift:=xlDown
+                    For i = 0 To UBound(currentLine)
+                       Sheets("Import").Range("A2").Offset(0, i).Value = currentLine(i)
+                    Next i
+                    
+                    Sheets("Import").Range("H2") = Sheets("Import").Range("b2") & Left(Sheets("Import").Range("D2"), InStr(Sheets("Import").Range("D2"), "-") - 1)
+                
+                    
+                    If Not Sheets("Result codes").Range("A:A").Find(Sheets("Import").Range("d2").Value, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                        Sheets("Import").Range("I2").Value = Sheets("Result codes").Range("A:A").Find(Sheets("Import").Range("d2").Value, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 1).Value
+                        Sheets("Import").Range("j2").Value = Sheets("Result codes").Range("A:A").Find(Sheets("Import").Range("d2").Value, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 5).Value
+                    End If
+                    
+                Loop
+nextfile:
+                Sheets("Import").Range("L1").Insert Shift:=xlDown
+                Sheets("Import").Range("L1").Value = filename
+                Close fnum
+            End If
+        filename = Dir()
+        Wend
+        startdate = startdate + 1
+    Wend
+        
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.StatusBar = False
+    
+End Sub
+
+Sub import_unsats(Optional Starttime As Variant)
+    Dim filename
+    Dim filepath
+    Dim startdate
+    Dim arr As Variant
+    Dim currentWorkbook As Workbook
+    Dim cell As Variant
+    Dim src As Workbook
+    Set currentWorkbook = ActiveWorkbook
+    startdate = Date
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+    
+    filepath = "\\labshared\neonatal1\CLIA & QA\Unsatisfactory Specimens\"
+        
+    filename = Dir(filepath & Format(startdate, "MM") & "*" & Format(startdate, "YYYY") & "*.xlsx")
+        
+    If Len(filename) > 1 Then
+        'MsgBox (filepath & filename)
+        Set src = Workbooks.Open(filepath & filename, True, True)
+        For Each cell In src.Sheets(1).Range("D:D")
+            If cell.Value = "" Then Exit For
+            Application.StatusBar = "Importing: " & cell.Value & ". " & Format((Timer - Starttime) / 86400, "(HH:MM:SS)")
+            If currentWorkbook.Sheets("Unsats").Range("A:A").Find(cell.Value, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                currentWorkbook.Sheets("Unsats").Range("A2:F2").Insert Shift:=xlDown
+                currentWorkbook.Sheets("Unsats").Range("a2").Value = cell.Value
+                currentWorkbook.Sheets("Unsats").Range("b2").Value = cell.Offset(0, 2).Value
+                currentWorkbook.Sheets("Unsats").Range("c2").Value = cell.Offset(0, 3).Value
+                If Not currentWorkbook.Sheets("Unsats").Range("J:J").Find(cell.Offset(0, 2).Value, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                    currentWorkbook.Sheets("Unsats").Range("d2").Value = currentWorkbook.Sheets("Unsats").Range("J:J").Find(cell.Offset(0, 2).Value, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 1).Value
+                End If
+            End If
+        Next cell
+        src.Close False
+        
+    End If
+
+        
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.StatusBar = False
+    
+End Sub
+
+Sub import_demos(Optional Starttime As Variant)
+    Dim fnum
+    Dim inputLine
+    Dim currentLine
+    Dim filename
+    Dim i
+    Dim rowoffset
+    
+    fnum = FreeFile
+    filename = "\\labshared\dhel shared\Horizon Documents\Neonatal Archive\NBS_AuxData.csv"
+    
+    Open filename For Input Access Read As #fnum
+    'On Error GoTo runaway
+    Do Until EOF(fnum)
+        Application.StatusBar = "Importing: " & filename & ".  " & Format((Timer - Starttime) / 86400, "(HH:MM:SS)")
+        Line Input #fnum, inputLine
+        currentLine = Split(Replace(inputLine, " ", ""), ",")
+        If Sheets("Demos").Range("A:A").Find(currentLine(0), LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+            Sheets("Demos").Range("A2").EntireRow.Insert Shift:=xlDown
+            For i = 0 To UBound(currentLine)
+               Sheets("Demos").Range("A2").Offset(0, i).Value = currentLine(i)
+            Next i
+        End If
+    Loop
+    
+    
+    Close fnum
+   
+    Application.StatusBar = False
+    Exit Sub
+runaway:
+Close fnum
+Application.StatusBar = False
+'MsgBox ("something went wrong")
+    Exit Sub
+
+End Sub
+
+
+
+Sub find_abnormals(Optional Starttime As Variant)
+    Dim blankCounter As Integer
+    Dim lineCounter
+    Dim cell
+    Dim totalrows
+    Dim gooddate As Date
+    Dim deletedate As Date
+    
+    gooddate = Date - 2
+    deletedate = Date - 7
+    totalrows = Application.CountIf(Sheets("Import").Range("B:B"), "<>")
+    blankCounter = 0
+    lineCounter = 1
+    
+
+    
+    Sheets("Import").Range("k:k").ClearContents
+    
+    For Each cell In Sheets("import").Range("I:I")
+        If cell.Row > totalrows Then Exit For
+        Application.StatusBar = "Working: " & cell.Row & "/" & totalrows & ": " & Format((Timer - Starttime) / 86400, "(HH:MM:SS)")
+        If cell.Offset(0, -8).Value < deletedate Then cell.EntireRow.ClearContents
+        'cell.Value = "Invalid" Or
+        If cell.Offset(0, -8).Value > gooddate And (cell.Value = "Refer" Or cell.Value = "Invalid" Or cell.Value = "Repeat" Or cell.Value = "Abnormal" Or cell.Value = "transfused" Or cell.Value = "Indeterminate") Then
+        'If cell.Value <> "Normal" And cell.Value <> "" Then
+            If Sheets("import").Range("k:k").Find(cell.Offset(0, -7).Value, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                Sheets("import").Range("k1").Offset(lineCounter, 0) = cell.Offset(0, -7).Value
+                lineCounter = lineCounter + 1
+                blankCounter = 0
+            End If
+        ElseIf cell.Value = "" Then
+            GoTo trynext
+        Else
+            blankCounter = 0
+        End If
+trynext:
+    Next cell
+Application.StatusBar = False
+End Sub
+
+Sub build_reports(Optional Starttime As Variant)
+    Dim HSN
+    Dim cell
+    Dim testName
+    Dim testValue
+    Dim testResult
+    Dim demorange
+    Dim i As Integer
+    Dim j As Integer
+    Dim totalreports
+    Dim testComment As String
+
+    Dim reportBuffer As Integer
+    
+    reportBuffer = 63
+    
+    totalreports = Application.CountIf(Sheets("Import").Range("k:k"), "<>")
+    
+    Sheets("Abnormals").Range("C:D").ClearContents
+    Sheets("Abnormals").Range("G:H").ClearContents
+    
+    Sheets("Abnormals").Range("A63", "I20000").EntireRow.Hidden = True
+    Sheets("Abnormals").Range("A1", "I" & totalreports * 63).EntireRow.Hidden = False
+    
+    
+    
+    For i = 0 To totalreports
+        Application.StatusBar = "Working: " & i & "/" & totalreports & "  " & Format((Timer - Starttime) / 86400, "(HH:MM:SS)")
+        HSN = Sheets("Import").Range("k2").Offset(i, 0).Value
+        
+        Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer, 0).Value = HSN
+        If Not Sheets("demos").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+            demorange = Sheets("demos").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole).Address
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 1, 0).Value = Sheets("demos").Range(demorange).Offset(0, 12) & ", " & Sheets("demos").Range(demorange).Offset(0, 13)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer, 4).Value = Sheets("demos").Range(demorange).Offset(0, 6)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 1, 4).Value = Sheets("demos").Range(demorange).Offset(0, 5)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 2, 4).Value = Sheets("demos").Range(demorange).Offset(0, 2)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 3, 4).Value = Sheets("demos").Range(demorange).Offset(0, 3)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 4, 4).Value = Sheets("demos").Range(demorange).Offset(0, 4)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 5, 4).Value = Sheets("demos").Range(demorange).Offset(0, 1)
+            
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 2, 0).Value = Sheets("demos").Range(demorange).Offset(0, 7)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 3, 0).Value = Sheets("demos").Range(demorange).Offset(0, 8)
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 4, 0).Value = Format(Sheets("demos").Range(demorange).Offset(0, 9), "MM/DD/YYYY")
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 5, 0).Value = Sheets("demos").Range(demorange).Offset(0, 11)
+            If Not Sheets("Unsats").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                'MsgBox ("here")
+                If Len(Sheets("Unsats").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 2).Value) > 0 Then
+                    Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 6, 0).Value = Sheets("Unsats").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 1).Value & ", " & Sheets("Unsats").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 2).Value
+                Else
+                    Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 6, 0).Value = Sheets("Unsats").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 1).Value
+                End If
+                
+                Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 7, 0).Value = Sheets("Unsats").Range("A:A").Find(HSN, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 3).Value
+            End If
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 5, 0).Value = Sheets("demos").Range(demorange).Offset(0, 11)
+    
+        Else
+            Sheets("Abnormals").Range("C2").Offset(0 + i * reportBuffer + 1, 0).Value = "Demographics Missing"
+        End If
+    
+        For Each cell In Sheets("Abnormals").Range(Sheets("Abnormals").Range("C2").Offset(0 + (i * reportBuffer) + 9, -1), Sheets("Abnormals").Range("C2").Offset(0 + (i * reportBuffer) + 60, -1))
+            'Left Column
+            
+            testResult = ""
+            testValue = ""
+            testComment = ""
+            
+            If InStr(cell.Value, "|") > 0 Then
+                testName = Left(cell.Value, InStr(cell.Value, "|") - 2)
+            ElseIf Len(cell.Value) < 10 Then
+                testName = cell.Value
+            Else
+                testName = "Dan"
+            End If
+            
+            If Not Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                testResult = Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 1).Value
+                testValue = Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole).Offset(0, -3).Value
+                'testComment = Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 2).Value
+            End If
+            If InStr(testResult, " ") > 0 Then
+                testResult = Left(testResult, InStr(testResult, " ") - 1)
+            End If
+            cell.Offset(0, 1) = testValue
+            cell.Offset(0, 2) = testResult
+            'If testComment <> "" Then cell.Offset(1, 0) = testComment
+            
+            'right column
+            
+            testResult = ""
+            testValue = ""
+            
+            If InStr(cell.Offset(0, 4).Value, "|") > 0 Then
+                testName = Left(cell.Offset(0, 4).Value, InStr(cell.Offset(0, 4).Value, "|") - 2)
+            Else
+                testName = cell.Offset(0, 4).Value
+            End If
+            
+            If Not Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole) Is Nothing Then
+                testResult = Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 1).Value
+                testValue = Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole).Offset(0, -3).Value
+                'testComment = Sheets("Import").Range("H:H").Find(HSN & testName, LookIn:=xlValues, lookat:=xlWhole).Offset(0, 2).Value
+            End If
+            If InStr(testResult, " ") > 0 Then
+                testResult = Left(testResult, InStr(testResult, " ") - 1)
+            End If
+            cell.Offset(0, 5) = testValue
+            cell.Offset(0, 6) = testResult
+            'If testComment <> "" Then cell.Offset(1, 4) = testComment
+
+        Next cell
+        
+    Next i
+Application.StatusBar = False
+End Sub
+
+ Sub do_it_to_it()
+    Dim Starttime As Variant
+    Starttime = Timer
+    
+    Call import_results(Starttime)
+    Call import_demos(Starttime)
+    Call import_unsats(Starttime)
+    Call find_abnormals(Starttime)
+    Call build_reports(Starttime)
+    
+    MsgBox ("Everything is complete!.  This took " & Format((Timer - Starttime) / 86400, "HH:MM:SS"))
+ End Sub
+ 
+ Sub send_reports()
+    Dim fPath As String, fName As String
+    Dim objOutlook As Object, objMail As Object
+ 
+    Set objOutlook = CreateObject("Outlook.Application")
+    Set objMail = objOutlook.CreateItem(0)
+ 
+    fPath = "\\labshared\neonatal1\Abnormal Specimens\" & Format(Now(), "YYYY") & "\" & Format(Now(), "MM") _
+        & " - " & Format(Now(), "MMMM") & "\"
+    
+    fName = Format(Now(), "MM.DD.YYYY") & " - Abnormal Reports.pdf"
+    
+    ActiveSheet.ExportAsFixedFormat Type:=xlTypePDF, filename:= _
+        fPath & fName, Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, IgnorePrintAreas:=False, OpenAfterPublish:= _
+        True
+    
+    With objMail
+        .To = "NewbornScreeningSharedMBX@kdheks.gov; kdhe.healthchemlab@ks.gov"
+        .Subject = Format(Now(), "MM.DD.YYYY") & " - Abnormal Reports"
+        .Body = "please see the attached Abnormal reports." & vbCrLf & _
+        vbCrLf & "Thanks," & vbCrLf & vbCrLf & "KDHE Health Chemistry Lab" & vbCrLf & vbCrLf & _
+        "CONFIDENTIALITY NOTICE - This e-mail transmission from the Kansas Department of Health and Environment, and any documents, files or previous e-mail messages attached to it may contain information that is confidential or legally privileged.  If you are not the intended recipient, or a person responsible for delivering it to the intended recipient, you are hereby notified that you must not read this transmission and that any disclosure, copying, printing, distribution or use of any of the information contained in or attached to this transmission is strictly prohibited. A misdirected transmission does not constitute waiver of any applicable privilege. If you have received this transmission in error, please immediately notify the sender by telephone or return e-mail and delete the original transmission and its attachments without reading or saving in any manner. Thank you."
+        .Attachments.Add fPath & fName
+        .Display
+    End With
+    
+ End Sub
